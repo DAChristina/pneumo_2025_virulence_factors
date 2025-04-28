@@ -16,38 +16,39 @@ dat_list_all_data <- dplyr::bind_rows(
   readxl::read_excel("raw_data/serotype 19F-003 and 006.xlsx", sheet = "19F") %>% 
     select(`ID Pathogen watch`, serotype, `Source of sample`)
 ) %>% 
-  dplyr::mutate(`ID Pathogen watch` = paste0(`ID Pathogen watch`, ".fasta")) %>% 
-  # view() %>% 
+  dplyr::mutate(fasta_name = paste0(`ID Pathogen watch`, ".fasta"),
+                fasta_name = gsub(" ", "_", fasta_name),
+                fasta_name = gsub("_IDN_", "_", fasta_name),
+                id_cleaned = gsub(".fasta", "", fasta_name)) %>% 
+  dplyr::rename(id_ori = `ID Pathogen watch`,
+                source = `Source of sample`) %>% 
+  # view() %>%
   glimpse()
 
 
 all_fasta <- read.table("raw_data/test_available_fasta.txt", header = F) %>% 
-  stats::setNames("all_fasta") %>% 
+  stats::setNames("fasta_name") %>% 
   dplyr::mutate(availability = "available") %>% 
   glimpse()
 
 test_missing_files <- dplyr::left_join(
-  dat_list_all_data %>% 
-    mutate(`ID Pathogen watch` = gsub(" ", "_", `ID Pathogen watch`),
-           `ID Pathogen watch` = gsub("_IDN_", "_", `ID Pathogen watch`)),
+  dat_list_all_data
+  ,
   all_fasta
   ,
-  by = c(`ID Pathogen watch` = "all_fasta")
+  by = "fasta_name"
 ) %>% 
   # filter(is.na(availability)) %>%
   # view() %>% 
-  dplyr::mutate(file_location = paste0("/home/ron/pneumo_2025_virulence_factors/raw_data/compiled_all_fasta/", `ID Pathogen watch`),
-                ID = gsub(".fasta", "", `ID Pathogen watch`)) %>% 
-  dplyr::select(ID, file_location) %>% 
+  dplyr::mutate(file_location = paste0("/home/ron/pneumo_2025_virulence_factors/raw_data/compiled_all_fasta/", fasta_name)) %>% 
+  dplyr::select(id_cleaned, file_location) %>% 
   glimpse()
 
+# generate qfile
 write.table(test_missing_files, "raw_data/list_prokka_3_6_19F_priority.txt",
             row.names = F, col.names = F, sep = "\t", quote = F)
 
-
-
-
-# virulence profile
+# virulence profile from VFDB ##################################################
 vir_combined_results <- dplyr::left_join(
   read.table("outputs/result_blast_virulences/blastn_tabular_setA_nt_VFDB.txt",
              header = F, sep = "\t") %>% 
@@ -62,12 +63,21 @@ vir_combined_results <- dplyr::left_join(
         dplyr::rename(header = V1) %>% 
         dplyr::mutate(gene    = str_extract(header, "(?<= \\()[^\\)]+(?=\\) )"), # " (" & ") "
                       gene_id = str_extract(header, "^[^)]*\\)"), # begin & ")"
-                      species = str_extract(header, "(?<=\\] \\[)[^\\]]+(?=\\])") # "] [" and "]"
+                      gene_class = str_extract(header, "(?<= - )[^\\(]+(?= \\()"),  # " - " & " ("
+                      species = str_extract(header, "(?<=\\] \\[)[^\\]]+(?=\\])") # "] [" & "]"
         )
       ,
       by = c("temporary_sseqid" = "gene_id")
     ) %>% 
-    dplyr::filter(file_name == "Streptococcus_pneumoniae_RMD131_contigs_from_YM")
+    dplyr::mutate(
+      # temporary_sseqid = case_when(
+      #   temporary_sseqid == "VFG005653" ~ "VFG005653(gb|WP_142355754.1)", # different ID for nanA from VFDB (gene) and NCBI (amino acids)
+      #   TRUE ~ temporary_sseqid
+      # ),
+      # nt_sdiff = abs(nt_sstart-nt_send),
+      # nt_qdiff = abs(nt_qstart-nt_qend),
+      nt_lengthdiff = abs(abs(nt_sstart-nt_send) - abs(nt_qstart-nt_qend))
+    )
   ,
   read.table("outputs/result_blast_virulences/blastx_tabular_setA_aa_VFDB.txt",
              header = F, sep = "\t") %>% 
@@ -86,8 +96,7 @@ vir_combined_results <- dplyr::left_join(
         )
       ,
       by = c("temporary_sseqid" = "gene_id")
-    ) %>% 
-    dplyr::filter(file_name == "Streptococcus_pneumoniae_RMD131_contigs_from_YM")
+    )
   ,
   by = c("file_name", "qseqid", "temporary_sseqid")
 ) %>% 
@@ -96,28 +105,160 @@ vir_combined_results <- dplyr::left_join(
   dplyr::select(-contains(".y")) %>% 
   dplyr::mutate(
     gene_present = case_when(
-      nt_pident >= 80 ~ "present",
+      nt_pident >= 70 ~ "present",
       TRUE ~ "absent"
     ),
-    protein_function = case_when(
-      aa_pident >= 95 & aa_gapopen == 0 ~ "functional",
-      aa_pident >= 90 & aa_gapopen <= 5 & aa_mismatch <= 30 ~ "variant",
-      aa_pident <= 85 & aa_mismatch >= 25 ~ "possibly defective",
-      TRUE ~ "possibly defective"
-    ),
-    bacwgs_check = case_when(
-      gene.x %in% c("cbpD", "cps4A", "cps4B", "cps4D", "hysA", "lytA", "lytC", 
-                    "nanA", "nanB", "pavA", "pce/cbpE", "pfbA", "ply", "psaA") ~ "detected",
-      TRUE ~ "no"
-    )
+    aa_lengthdiff = abs(abs(aa_sstart-aa_send) - abs(aa_qstart-aa_qend)),
+    # protein_function = case_when(
+    #   aa_pident >= 95 & aa_gapopen == 0 ~ "functional",
+    #   aa_pident >= 90 & aa_gapopen <= 5 & aa_mismatch <= 30 ~ "variant",
+    #   aa_pident <= 85 & aa_mismatch >= 25 ~ "possibly defective",
+    #   TRUE ~ "possibly defective"
+    # ),
   ) %>% 
   # view() %>% 
   glimpse()
 
 # nanA is not included in VFDB pro list -_-)
 test <- vir_combined_results %>% 
-  select(nt_pident, nt_mismatch,
-         aa_pident, aa_mismatch, aa_gapopen, gene.x, species.x,
-         gene_present, protein_function, bacwgs_check) %>% 
-  view() %>% 
+  select(file_name,
+         nt_pident, nt_length, nt_lengthdiff,
+         nt_mismatch, aa_lengthdiff,
+         aa_pident, aa_mismatch, aa_gapopen, gene.x, species.x, gene_class,
+         gene_present, #protein_function
+         ) %>% 
+  # view() %>% 
   glimpse()
+
+# test analysis from panvita
+# fuzzyjoin requires weird & needy data preparation & arrangement
+vir_mtx <- read.csv("outputs/result_panvita/Results_vfdb_25-04-2025_09-51-14/matriz_vfdb.csv", sep = ";") %>% 
+  dplyr::select(-X) %>% 
+  tidyr::pivot_longer(cols = 2:ncol(.),
+                      names_to = "gene",
+                      values_to = "aa_percent") %>% 
+  dplyr::left_join(
+    dat_list_all_data
+    ,
+    by = c("Strains" = "id_cleaned")
+  ) %>% 
+  glimpse()
+
+headers <- read.table("inputs/prepare_vfdb_database/VFDB_setA_compiled_headers_nt.txt",
+                      header = F, sep = "\t") %>% 
+  dplyr::rename(header = V1) %>% 
+  dplyr::mutate(gene    = str_extract(header, "(?<= \\()[^\\)]+(?=\\) )"), # " (" & ") "
+                gene_id = str_extract(header, "^[^)]*\\)"), # begin & ")"
+                gene_class = str_extract(header, "(?<= - )[^\\(]+(?= \\()"),  # " - " & " ("
+                species = str_extract(header, "(?<=\\] \\[)[^\\]]+(?=\\])") # "] [" & "]"
+  ) %>% 
+  glimpse()
+
+df_joined <- fuzzyjoin::regex_left_join(
+  vir_mtx, headers,
+  by = c("gene" = "gene")
+) %>% 
+  dplyr::mutate(
+    gene_class = case_when(
+      str_detect(gene.x, "pav|pfb|srt|pce|cbp") ~ "Adherence",
+      str_detect(gene.x, "cps") ~ "Immune modulation",
+      str_detect(gene.x, "gnd") ~ "Nutritional/Metabolic factor",
+      TRUE ~ gene_class
+      )
+    ) %>% 
+  dplyr::mutate(source = factor(source),
+                serotype = factor(serotype)) %>% 
+  glimpse()
+
+test_missing_geneClass <- df_joined %>% 
+  dplyr::filter(is.na(gene_class)) %>% 
+  dplyr::select(Strains, gene.x, gene_class,
+                -c("gene_id")) %>% 
+  # view() %>% 
+  glimpse()
+
+# test visualisation
+# faceted by gene
+ggplot(df_joined,
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+# faceted by gene_class
+ggplot(df_joined,
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene_class, scales = "free_y", drop = F) +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+
+################################################################################
+# filtered by source only
+ggplot(df_joined %>% 
+         dplyr::filter(gene_class == "Adherence"),
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  labs(title = "Adherence") +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+ggplot(df_joined %>% 
+         dplyr::filter(gene_class == "Exoenzyme"),
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  labs(title = "Exoenzyme") +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+ggplot(df_joined %>% 
+         dplyr::filter(gene_class == "Exotoxin"),
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  labs(title = "Exotoxin") +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+ggplot(df_joined %>% 
+         dplyr::filter(gene_class == "Immune modulation"),
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  labs(title = "Immune modulation") +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
+
+ggplot(df_joined %>% 
+         dplyr::filter(gene_class == "Nutritional/Metabolic factor"),
+       aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
+  geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
+  # geom_boxplot(alpha = 0.4, aes(fill = source)) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
+  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  theme_bw() +
+  labs(title = "Nutritional/Metabolic factor") +
+  theme(strip.text = element_text(size = 10, face = "bold"),
+        legend.position = "bottom")
