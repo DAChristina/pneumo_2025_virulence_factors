@@ -142,16 +142,40 @@ vir_mtx <- read.csv("outputs/result_panvita/Results_vfdb_25-04-2025_09-51-14/mat
     ,
     by = c("Strains" = "id_cleaned")
   ) %>% 
+  dplyr::mutate(gene = gene %>%
+      str_replace("srtC", "srtC-") %>%
+        str_replace("-.", "-") %>%
+      str_replace("\\.", "/")
+  ) %>% 
   glimpse()
 
-headers <- read.table("inputs/prepare_vfdb_database/VFDB_setA_compiled_headers_nt.txt",
-                      header = F, sep = "\t") %>% 
+# apparently R cannot read huge samples from headers. I filter out headers on linux instead
+headers <- read.table("outputs/result_panvita/VFDB_setA_compiled_headers_pro_streptococcus_only.txt",
+                      header = F, sep = "\t") %>%
+  # omit VFDB original data for Streptococcus genus
+  # read.table("inputs/prepare_vfdb_database/VFDB_setA_compiled_headers_nt.txt",
+  #                     header = F, sep = "\t") %>%
   dplyr::rename(header = V1) %>% 
   dplyr::mutate(gene    = str_extract(header, "(?<= \\()[^\\)]+(?=\\) )"), # " (" & ") "
                 gene_id = str_extract(header, "^[^)]*\\)"), # begin & ")"
                 gene_class = str_extract(header, "(?<= - )[^\\(]+(?= \\()"),  # " - " & " ("
                 species = str_extract(header, "(?<=\\] \\[)[^\\]]+(?=\\])") # "] [" & "]"
   ) %>% 
+  # view() %>% 
+  glimpse()
+
+headers_non_streptococcal <- read.table("outputs/result_panvita/VFDB_setA_compiled_headers_pro.txt",
+                                        header = F, sep = "\t") %>%
+  # omit VFDB original data for Streptococcus genus
+  # read.table("inputs/prepare_vfdb_database/VFDB_setA_compiled_headers_nt.txt",
+  #                     header = F, sep = "\t") %>%
+  dplyr::rename(header = V1) %>% 
+  dplyr::mutate(gene    = str_extract(header, "(?<= \\()[^\\)]+(?=\\) )"), # " (" & ") "
+                gene_id = str_extract(header, "^[^)]*\\)"), # begin & ")"
+                gene_class = str_extract(header, "(?<= - )[^\\(]+(?= \\()"),  # " - " & " ("
+                species = str_extract(header, "(?<=\\] \\[)[^\\]]+(?=\\])") # "] [" & "]"
+  ) %>% 
+  # view() %>% 
   glimpse()
 
 df_joined <- fuzzyjoin::regex_left_join(
@@ -167,8 +191,31 @@ df_joined <- fuzzyjoin::regex_left_join(
       )
     ) %>% 
   dplyr::mutate(source = factor(source),
-                serotype = factor(serotype)) %>% 
+                serotype = case_when(
+                  serotype == "06E(6B)" ~ "06B",
+                  TRUE ~ serotype
+                ),
+                serotype = factor(serotype),
+                gene.x = case_when(
+                  is.na(species) ~ paste0(gene.x, " (non-streptococcal)"),
+                  TRUE ~ gene.x
+                  ),
+                species = case_when(
+                  gene.x == "gndA (non-streptococcal)" ~ "Klebsiella pneumoniae subsp. pneumoniae NTUH-K2044",
+                  gene.x == "cpsI (non-streptococcal)" ~ "Enterococcus faecalis V583",
+                  TRUE ~ species
+                  )
+                ) %>% 
+  # view() %>% 
   glimpse()
+
+filtered_report <- df_joined %>% 
+  dplyr::rename(gene = gene.x) %>% 
+  dplyr::select(-c("header", "gene.y", "gene_id")) %>% 
+  glimpse()
+
+write.csv(df_joined, "outputs/result_panvita/panvita_results_compiled.csv", row.names = F)
+write.csv(filtered_report, "report/panvita_results_compiled_report.csv", row.names = F)
 
 test_missing_geneClass <- df_joined %>% 
   dplyr::filter(is.na(gene_class)) %>% 
@@ -176,6 +223,15 @@ test_missing_geneClass <- df_joined %>%
                 -c("gene_id")) %>% 
   # view() %>% 
   glimpse()
+
+test_empty_species <- df_joined %>% 
+  dplyr::filter(is.na(species)) %>% 
+  dplyr::select(Strains, gene.x, gene_class, header, species,
+                -c("gene_id")) %>% 
+  # view() %>%
+  glimpse()
+unique(test_empty_species$gene.x)
+
 
 # test visualisation
 # faceted by gene
