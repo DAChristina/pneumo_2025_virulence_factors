@@ -193,6 +193,7 @@ df_joined <- fuzzyjoin::regex_left_join(
   dplyr::mutate(source = factor(source),
                 serotype = case_when(
                   serotype == "06E(6B)" ~ "06B",
+                  serotype == "003" ~ "03",
                   TRUE ~ serotype
                 ),
                 serotype = factor(serotype),
@@ -235,86 +236,109 @@ unique(test_empty_species$gene.x)
 
 # test visualisation
 # faceted by gene
+png("pictures/panvita_aa_percent_1allgenes.png",
+    width = 20, height = 20, units = "cm", res = 300)
 ggplot(df_joined,
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
 # faceted by gene_class
+png("pictures/panvita_aa_percent_2geneClass.png",
+    width = 20, height = 15, units = "cm", res = 300)
 ggplot(df_joined,
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene_class, scales = "free_y", drop = F) +
+  facet_wrap(~ gene_class, drop = F) +
   theme_bw() +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
 
 ################################################################################
 # filtered by source only
+png("pictures/panvita_aa_percent_3a_adherence.png",
+    width = 20, height = 15, units = "cm", res = 300)
 ggplot(df_joined %>% 
          dplyr::filter(gene_class == "Adherence"),
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   labs(title = "Adherence") +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
+png("pictures/panvita_aa_percent_3b_exoenzyme.png",
+    width = 20, height = 8, units = "cm", res = 300)
 ggplot(df_joined %>% 
          dplyr::filter(gene_class == "Exoenzyme"),
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   labs(title = "Exoenzyme") +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
+png("pictures/panvita_aa_percent_3c_exotoxin.png",
+    width = 10, height = 8, units = "cm", res = 300)
 ggplot(df_joined %>% 
          dplyr::filter(gene_class == "Exotoxin"),
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  scale_y_continuous(limits = c(0, 100)) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   labs(title = "Exotoxin") +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
+png("pictures/panvita_aa_percent_3d_exoenzyme.png",
+    width = 20, height = 15, units = "cm", res = 300)
 ggplot(df_joined %>% 
          dplyr::filter(gene_class == "Immune modulation"),
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   labs(title = "Immune modulation") +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
 
+png("pictures/panvita_aa_percent_3e_nutritional_metabolicFactor.png",
+    width = 20, height = 10, units = "cm", res = 300)
 ggplot(df_joined %>% 
          dplyr::filter(gene_class == "Nutritional/Metabolic factor"),
        aes(x = serotype, y = aa_percent, fill = source, colour = source)) +
   geom_violin(trim = TRUE, alpha = 0.4, position = position_dodge(width = 0.8)) +
   # geom_boxplot(alpha = 0.4, aes(fill = source)) +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 1) +
-  facet_wrap(~ gene.x, scales = "free_y", drop = F) +
+  scale_y_continuous(limits = c(0, 100)) +
+  facet_wrap(~ gene.x, drop = F) +
   theme_bw() +
   labs(title = "Nutritional/Metabolic factor") +
   theme(strip.text = element_text(size = 10, face = "bold"),
         legend.position = "bottom")
+dev.off()
